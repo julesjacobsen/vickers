@@ -1,8 +1,8 @@
-
-use std::borrow::Cow;
-use std::fmt::{Display, Formatter};
+use crate::hash::encode_refalt_hash;
 use lazy_static::lazy_static;
 use regex::Regex;
+use std::borrow::Cow;
+use std::fmt::{Display, Formatter};
 
 lazy_static! {
     static ref VARIANT_REGEX: Regex = Regex::new(r"(?<chrom>1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17|18|19|20|21|22|X|Y|M|MT)[-:](?<pos>[0-9]+)[-:](?<ref>[ACGT]+)[-:](?<alt>[ACGT]+)").unwrap();
@@ -53,24 +53,43 @@ pub fn encode_variant_key(chrom: &str, pos: u32, reference: &str, alternate: &st
     if pos > (1 << 28) {
         panic!("Position {} too large for variant key! Max size is {}", pos, 1 << 28);
     }
-    if (reference.len() + alternate.len()) > 11 {
-        panic!("Total length of ref and alt alleles must be max 11 bases");
-    }
+    // if (reference.len() + alternate.len()) > 11 {
+    //     panic!("Total length of ref and alt alleles must be max 11 bases");
+    // }
     encode_chrom(chrom) << VKSHIFT_CHROM | (pos as u64) << VKSHIFT_POS | encode_ref_alt(reference, alternate)
 }
 
 fn encode_chrom(chrom: &str) -> u64 {
     match chrom {
-        n if chrom.parse::<u64>().is_ok()  => n.parse::<u64>().unwrap(),
+        n if chrom.parse::<u64>().is_ok() => n.parse::<u64>().unwrap(),
         "X" => 23,
         "Y" => 24,
         "M" => 25,
         "MT" => 25,
-        _ => panic!("Illegal chromosome string '{}'. Should be one of 1-22,X,Y,M.", chrom),
+        _ => 0,
+        // _ => panic!("Illegal chromosome string '{}'. Should be one of 1-22,X,Y,M.", chrom),
     }
 }
 
-fn encode_ref_alt(reference: &str, alternate: &str) -> u64 {
+pub fn encode_ref_alt(reference: &str, alternate: &str) -> u64 {
+    let ref_alt = if reference.len() + alternate.len() <= 11 && is_just_acgt(reference) && is_just_acgt(alternate) {
+        encode_ref_alt_rev(reference, alternate)
+    } else {
+        encode_refalt_hash(reference.as_ref(), alternate.as_ref()).into()
+    };
+    ref_alt
+}
+
+fn is_just_acgt(allele: &str) -> bool {
+    for c in allele.chars() {
+        if c != 'A' && c != 'C' && c != 'G' && c != 'T' && c != 'a' && c != 'c' && c != 'g' && c != 't' {
+            return false;
+        }
+    }
+    true
+}
+
+fn encode_ref_alt_rev(reference: &str, alternate: &str) -> u64 {
     let mut bits: u64 = 0;
 
     let ref_length = reference.len() as u64;
@@ -110,10 +129,10 @@ fn encode_base(c: char) -> u8 {
 
 pub fn decode_variant_key(variant_key: &VariantKey) -> Variant {
     let chrom = decode_chrom(variant_key);
-    let pos= decode_pos(variant_key);
-    let reference= decode_ref(variant_key);
+    let pos = decode_pos(variant_key);
+    let reference = decode_ref(variant_key);
     let alternate = decode_alt(variant_key);
-    Variant {chrom, pos, reference, alternate}
+    Variant { chrom, pos, reference, alternate }
 }
 
 const BASE_CHARS: [char; 4] = ['A', 'C', 'G', 'T'];

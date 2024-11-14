@@ -6,6 +6,7 @@ use crate::variant_key::{decode_variant_key, parse_variant};
 mod test;
 
 mod variant_key;
+mod hash;
 
 #[derive(Parser)]
 #[command(name = "vkrs", version = "0.1.0")]
